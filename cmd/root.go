@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"os"
+	"sync"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -25,10 +26,7 @@ var (
 // Execute executes the root command.
 func Execute(version string) error {
 	rootCmd.Version = version
-	homedir, err := os.UserHomeDir()
-	if err != nil {
-		log.Error(err)
-	}
+	homedir, _ := os.UserHomeDir()
 	rootCmd.PersistentFlags().StringSlice("namespaces", namespaces, "List of namespaces for event grabbing")
 	viper.BindPFlag("namespaces", rootCmd.Flags().Lookup("namespaces"))
 	rootCmd.PersistentFlags().StringVar(&kubeconfig, "kubeconfig", homedir+"/.kube/config", "(optional) absolute path to the kubeconfig file")
@@ -41,7 +39,7 @@ func ns(namespaces []string, clientset *kubernetes.Clientset) []string {
 	if len(namespaces) == 0 {
 		namespaceList, err := clientset.CoreV1().Namespaces().List(metav1.ListOptions{})
 		if err != nil {
-			log.Error("namespaces flag not provided and cannot grab list of namespaces", err)
+			log.Fatal("namespaces flag not provided and cannot grab list of namespaces", err)
 		}
 		for _, namespace := range namespaceList.Items {
 			namespaces = append(namespaces, namespace.Name)
@@ -57,22 +55,38 @@ func clientset() *kubernetes.Clientset {
 	}
 	config, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
 	if err != nil {
-		log.Error(err)
+		log.Fatal("Cannot build kubeconfig for authentication", err)
 	}
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
-		log.Error(err)
+		log.Fatal("Cannot create kubernetes client", err)
 	}
 	return clientset
+}
+
+// Grab kubernetes events from a namespace
+func events(namespace string, clientset *kubernetes.Clientset) {
+	log.Info("Starting watch on namespace: ", namespace)
+	events := clientset.CoreV1().Events(namespace)
+	watch, err := events.Watch(metav1.ListOptions{})
+	if err != nil {
+		log.Error("Cannot create watch interface on namespace: ", namespace, err)
+	}
+	for {
+		results := <-watch.ResultChan() // Need to only grab events generated now. Not past ones.
+		log.WithFields(log.Fields{      // Deconstruct events and log with fields
+			"namespace": namespace,
+		}).Info(results)
+	}
 }
 
 func main(cmd *cobra.Command, args []string) {
 	log.SetFormatter(&log.JSONFormatter{})
 	clientset := clientset()
+	var wg sync.WaitGroup
 	for _, namespace := range ns(namespaces, clientset) {
-		events := clientset.CoreV1().Events(namespace)
-		watch, _ := events.Watch(metav1.ListOptions{})
-		results := <-watch.ResultChan()
-		log.Info(results)
+		wg.Add(1)
+		go events(namespace, clientset)
 	}
+	wg.Wait()
 }
