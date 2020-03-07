@@ -1,7 +1,7 @@
 package main
 
 import (
-	cmd "github.com/jdamata/k8s-event/cmd"
+	cmd "github.com/jdamata/k8s-events/cmd"
 )
 
 var version = "dev"
