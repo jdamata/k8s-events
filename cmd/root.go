@@ -50,6 +50,7 @@ func ns(namespaces []string, clientset *kubernetes.Clientset) []string {
 	return namespaces
 }
 
+// Authenticate to cluster
 func clientset() *kubernetes.Clientset {
 	if _, err := os.Stat(kubeconfig); err != nil {
 		kubeconfig = ""

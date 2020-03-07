@@ -1,24 +1,21 @@
   
 export GO111MODULE=on
 VERSION=$(shell git describe --tags --candidates=1 --dirty)
-BUILD_FLAGS=-ldflags="-X main.version=$(VERSION)"
-# CERT_ID ?= TODO
-SRC=$(shell find . -name '*.go')
+IMG ?= jdamata/k8s-events:${VERSION}
 
-.PHONY: all clean release install
+.PHONY: run
 
-all: k8s-events-linux-amd64 k8s-events-darwin-amd64
+run:
+	go run main.go
 
-clean:
-	rm -f k8s-events k8s-events-linux-amd64 k8s-events-darwin-amd64
+fmt:
+	go fmt ./...
 
-k8s-events-linux-amd64: $(SRC)
-	GOOS=linux GOARCH=amd64 go build $(BUILD_FLAGS) -o $@ .
+vet:
+	go vet ./...
 
-k8s-events-darwin-amd64: $(SRC)
-	GOOS=darwin GOARCH=amd64 go build $(BUILD_FLAGS) -o $@ .
+docker-build: test
+	docker build . -t ${IMG}
 
-install:
-	rm -f k8s-events
-	go build $(BUILD_FLAGS) .
-	mv k8s-events ~/bin/
+docker-push:
+	docker push ${IMG}
