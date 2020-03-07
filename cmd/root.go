@@ -74,7 +74,7 @@ func events(namespace string, clientset *kubernetes.Clientset) {
 	}
 	for {
 		results := <-watch.ResultChan() // Need to only grab events generated now. Not past ones.
-		log.WithFields(log.Fields{      // Deconstruct events and log with fields
+		log.WithFields(log.Fields{      // Deconstruct events and log with fields. https://godoc.org/k8s.io/api/core/v1#Event
 			"namespace": namespace,
 		}).Info(results)
 	}
