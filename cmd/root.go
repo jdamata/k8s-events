@@ -1,18 +1,18 @@
 package cmd
 
 import (
-	"fmt"
 	"os"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 )
 
 var (
+	namespaces []string
 	kubeconfig string
 	rootCmd    = &cobra.Command{
 		Use:   "k8s-events",
@@ -29,16 +29,25 @@ func Execute(version string) error {
 	if err != nil {
 		log.Error(err)
 	}
-	rootCmd.PersistentFlags().StringVarP(&kubeconfig, "kubeconfig", "k", homedir+"/.kube/config", "(optional) absolute path to the kubeconfig file")
+	rootCmd.PersistentFlags().StringSlice("namespaces", namespaces, "List of namespaces for event grabbing")
+	viper.BindPFlag("namespaces", rootCmd.Flags().Lookup("namespaces"))
+	rootCmd.PersistentFlags().StringVar(&kubeconfig, "kubeconfig", homedir+"/.kube/config", "(optional) absolute path to the kubeconfig file")
 	viper.BindPFlag("kubeconfig", rootCmd.Flags().Lookup("kubeconfig"))
 	return rootCmd.Execute()
 }
 
-func logging() {
-	log.SetFormatter(&log.TextFormatter{
-		DisableColors: true,
-		FullTimestamp: true,
-	})
+// If namespaces is empty list, default to all namespaces
+func ns(namespaces []string, clientset *kubernetes.Clientset) []string {
+	if len(namespaces) == 0 {
+		namespaceList, err := clientset.CoreV1().Namespaces().List(metav1.ListOptions{})
+		if err != nil {
+			log.Error("namespaces flag not provided and cannot grab list of namespaces", err)
+		}
+		for _, namespace := range namespaceList.Items {
+			namespaces = append(namespaces, namespace.Name)
+		}
+	}
+	return namespaces
 }
 
 func clientset() *kubernetes.Clientset {
@@ -57,13 +66,12 @@ func clientset() *kubernetes.Clientset {
 }
 
 func main(cmd *cobra.Command, args []string) {
+	log.SetFormatter(&log.JSONFormatter{})
 	clientset := clientset()
-	events := clientset.CoreV1().Events("default")
-	opts := v1.ListOptions{}
-	watchInt, err := events.Watch(opts)
-	if err != nil {
-		log.Error(err)
+	for _, namespace := range ns(namespaces, clientset) {
+		events := clientset.CoreV1().Events(namespace)
+		watch, _ := events.Watch(metav1.ListOptions{})
+		results := <-watch.ResultChan()
+		log.Info(results)
 	}
-	results := watchInt.ResultChan()
-	fmt.Println(results)
 }
