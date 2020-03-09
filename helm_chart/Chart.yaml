@@ -1,0 +1,15 @@
+apiVersion: v1
+name: k8s-events
+version: 0.0.1
+appVersion: 0.0.2
+description: Helm chart for k8s-events
+keywords:
+  - kuberenetes
+  - events
+  - logging
+sources:
+  - https://github.com/jdamata/k8s-events
+engine: gotpl
+maintainers:
+- name: Joel Damata
+  email: joel.damata94@gmail.com

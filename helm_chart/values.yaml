@@ -1,0 +1,13 @@
+---
+image:
+  repository: jdamata/k8s-events
+  tag: latest
+  pullPolicy: IfNotPresent
+
+resources: 
+  limits:
+    cpu: 100m
+    memory: 30Mi
+  requests:
+    cpu: 100m
+    memory: 20Mi
