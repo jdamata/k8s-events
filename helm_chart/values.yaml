@@ -1,7 +1,7 @@
 ---
 image:
   repository: jdamata/k8s-events
-  tag: latest
+  tag: 0.0.2
   pullPolicy: IfNotPresent
 
 resources: 
