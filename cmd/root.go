@@ -1,12 +1,14 @@
 package cmd
 
 import (
+	"encoding/json"
 	"os"
 	"sync"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
@@ -37,9 +39,10 @@ func Execute(version string) error {
 // If namespaces is empty list, default to all namespaces
 func ns(namespaces []string, clientset *kubernetes.Clientset) []string {
 	if len(namespaces) == 0 {
+		log.Debug("Namespaces flag not provided. Defaulting to all namespaces")
 		namespaceList, err := clientset.CoreV1().Namespaces().List(metav1.ListOptions{})
 		if err != nil {
-			log.Fatal("namespaces flag not provided and cannot grab list of namespaces", err)
+			log.Fatal("Failed to grab list of namespaces: ", err)
 		}
 		for _, namespace := range namespaceList.Items {
 			namespaces = append(namespaces, namespace.Name)
@@ -51,15 +54,16 @@ func ns(namespaces []string, clientset *kubernetes.Clientset) []string {
 // Authenticate to cluster
 func clientset() *kubernetes.Clientset {
 	if _, err := os.Stat(kubeconfig); err != nil {
+		log.Debug("Kubeconfig not provided")
 		kubeconfig = ""
 	}
 	config, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
 	if err != nil {
-		log.Fatal("Cannot build kubeconfig for authentication", err)
+		log.Fatal("Cannot build kubeconfig for authentication: ", err)
 	}
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
-		log.Fatal("Cannot create kubernetes client", err)
+		log.Fatal("Cannot create kubernetes client: ", err)
 	}
 	return clientset
 }
@@ -68,15 +72,26 @@ func clientset() *kubernetes.Clientset {
 func events(namespace string, clientset *kubernetes.Clientset) {
 	log.Info("Starting watch on namespace: ", namespace)
 	events := clientset.CoreV1().Events(namespace)
-	watch, err := events.Watch(metav1.ListOptions{})
+	watch, err := events.Watch(metav1.ListOptions{Watch: true})
 	if err != nil {
 		log.Error("Cannot create watch interface on namespace: ", namespace, err)
 	}
 	for {
-		results := <-watch.ResultChan() // Need to only grab events generated now. Not past ones.
-		log.WithFields(log.Fields{      // Deconstruct events and log with fields. https://godoc.org/k8s.io/api/core/v1#Event
-			"namespace": namespace,
-		}).Info(results)
+		var event corev1.Event
+		results := <-watch.ResultChan()
+		data, _ := json.Marshal(results.Object)
+		json.Unmarshal(data, &event)
+		log.WithFields(log.Fields{
+			"namespace":      namespace,
+			"pod":            event.Name,
+			"reason":         event.Reason,
+			"event_level":    event.Type,
+			"count":          event.Count,
+			"FirstTimestamp": event.FirstTimestamp,
+			"LastTimestamp":  event.LastTimestamp,
+			//"event_time":     event.EventTime,
+			//"controller": event.ReportingController,
+		}).Info(event.Message)
 	}
 }
 
